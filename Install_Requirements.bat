@@ -7,7 +7,7 @@ echo      Aion 2 Radar - Python Package Setup
 echo ====================================================
 echo.
 
-python --version >nul 2>&1
+py --version >nul 2>&1
 if %errorLevel% neq 0 (
     echo [ERROR] Python is not installed or not in your PATH!
     echo Please install Python 3.10+ from python.org and check "Add Python to PATH".
@@ -20,8 +20,8 @@ echo [+] Python detected.
 echo [+] Installing required packages (scapy, lz4, psutil)...
 echo.
 
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+py -m pip install --upgrade pip
+py -m pip install -r requirements.txt
 
 echo.
 echo ====================================================

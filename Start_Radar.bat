@@ -14,7 +14,7 @@ echo             Starting Aion 2 Radar...
 echo ====================================================
 echo.
 
-python aion2_radar.py
+py aion2_radar.py
 if %errorLevel% neq 0 (
     echo.
     echo ====================================================

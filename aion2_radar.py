@@ -371,6 +371,7 @@ class PureStreamEngine:
                 if len(p) >= n + 18:
                     obj_id = struct.unpack('<I', p[n + 2:n + 6])[0]
                     if is_target_hidden_cube(obj_id):
+                        x, y, z = struct.unpack('<fff', p[n + 6:n + 18])
                         name = HIDDEN_CUBE_IDS.get(obj_id, f'Hidden Cube ({obj_id})')
                         is_asmodian = obj_id in ASMODIAN_V04_IDS
                         is_new = self.state.add_cube(CubeItem(entity_id=eid, npc_id=obj_id, name=name, x=x, y=y, z=z, is_asmodian=is_asmodian, model_name='HiddenCube'))
