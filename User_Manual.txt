@@ -1,0 +1,63 @@
+====================================================
+           A2 HCR - HIDDEN CUBE RADAR
+====================================================
+
+A lightweight, non-intrusive 2D radar overlay for locating Hidden Cubes in Aion 2 in real time.
+Zero memory hooking, zero DLL injection, zero game file modification. 100% passive network packet inspection.
+
+----------------------------------------------------
+GETTING STARTED & INSTALLATION
+----------------------------------------------------
+
+1. INSTALL PYTHON DEPENDENCIES:
+   Double-click "Install_Requirements.bat".
+   This will install the necessary Python packages: scapy, lz4, psutil.
+
+2. NPCAP DRIVER (REQUIRED FOR PACKET CAPTURE):
+   Network packet sniffing on Windows requires Npcap.
+   If you already have Wireshark or Npcap installed, you are ready.
+   Otherwise, download and install Npcap from:
+   https://npcap.com/#download
+   IMPORTANT: During installation, make sure "Install Npcap in WinPcap API-compatible Mode" is checked.
+
+3. LAUNCH THE RADAR:
+   Double-click "Start_Radar.bat" (automatically requests Administrator privileges required for network sniffing).
+   A prompt will appear asking for your in-game Character Name.
+   Enter your character name (or leave it blank for automatic detection) and click "Start Radar".
+   For privacy, character names are never saved to disk.
+
+----------------------------------------------------
+RADAR DISPLAY & CONTROLS
+----------------------------------------------------
+
+* TARGET-LOCK COORDINATE SYSTEM:
+  When a Hidden Cube is detected in your area, it is anchored stationary at the exact center of the radar (red circle).
+  Your character is displayed as a green circle ("YOU") relative to the cube.
+  As you walk towards the cube, your green character visibly moves towards the center until you reach it.
+
+* LIVE DISTANCE & ELEVATION:
+  Real-time 3D distance in meters is displayed directly on the target (e.g., "24m").
+  Height difference is shown in parentheses:
+  "+4m" means the cube is on a cliff, ledge, or roof above you.
+  "-3m" means the cube is below you.
+
+* SEARCHING STATUS & LIVE POSITION:
+  When no cube is currently nearby, the radar displays "Searching for Cubes..." along with your live player coordinates.
+
+* AUDIO ALERT:
+  A distinctive sound notification plays whenever a new Hidden Cube appears within range.
+  Toggle sound on or off at any time using the speaker button on the top header.
+
+* DRAGGING & RESIZING:
+  Click and drag anywhere on the header or radar canvas to move the overlay to your desired screen position.
+  Click "X" in the top-right corner to exit the radar.
+
+----------------------------------------------------
+TECHNICAL SPECIFICATIONS
+----------------------------------------------------
+
+* Monitored Game Ports: TCP 13328 and 13320 (Aion 2 game servers)
+* Packet Decoding: Zero-copy uvarint stream framer with multi-stage LZ4 decompression
+* Cube Filter: Texture-verified database excluding quest containers and decoys
+* Movement Sync: High-precision server packet tracking (0x382A, 0x382B, 0x382C) with dead-reckoning extrapolation
+====================================================

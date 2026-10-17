@@ -1,0 +1,37 @@
+# Python byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# Research and development backup
+_arastirma_yedek/
+
+# Network captures and logs
+*.pcap
+*.pcapng
+*.cap
+captures/
+logs/
+*.log
+debug_gathered.log
+
+# User configs and local caches
+radar_config.json
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln.docstates
+
+# Archives and game data
+*.pak
+*.zip
