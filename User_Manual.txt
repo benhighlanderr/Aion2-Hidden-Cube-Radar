@@ -30,10 +30,10 @@ GETTING STARTED & INSTALLATION
 RADAR DISPLAY & CONTROLS
 ----------------------------------------------------
 
-* TARGET-LOCK COORDINATE SYSTEM:
-  When a Hidden Cube is detected in your area, it is anchored stationary at the exact center of the radar (red circle).
-  Your character is displayed as a green circle ("YOU") relative to the cube.
-  As you walk towards the cube, your green character visibly moves towards the center until you reach it.
+* PLAYER-CENTERED 150M RADAR:
+  Your character is stationary at the exact center of the radar (green circle labeled "YOU").
+  Detected Hidden Cubes appear as red circles at a fixed 150-meter scale (outer circle = 150m, middle dashed ring = 75m).
+  As you move in the world, cubes smoothly glide inward directly toward you at the center with 1:1 motion.
 
 * LIVE DISTANCE & ELEVATION:
   Real-time 3D distance in meters is displayed directly on the target (e.g., "24m").

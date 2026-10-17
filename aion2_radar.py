@@ -583,70 +583,60 @@ class Pure2DRadarApp:
         self.canvas.create_oval(cx - half_r, cy - half_r, cx + half_r, cy + half_r, outline='#0E1626', width=1, dash=(2, 2))
         self.canvas.create_line(cx, cy - R + 10, cx, cy + R - 10, fill='#0E1626', width=1, dash=(3, 3))
         self.canvas.create_line(cx - R + 10, cy, cx + R - 10, cy, fill='#0E1626', width=1, dash=(3, 3))
+        radar_range_m = 150.0
+        eff_scale = (R - 16) / radar_range_m
+        self.canvas.create_text(cx, cy + R - 10, text='Radar: 150m', fill='#475569', font=('Segoe UI', 7))
         visible: List[CubeItem] = snap['cubes']
-        closest_cube: Optional[CubeItem] = None
-        closest_dist = float('inf')
-        closest_pdx = 0.0
-        closest_pdy = 0.0
-        closest_pdz = 0.0
-        closest_horiz = 0.0
-        if player_pos and visible:
-            for cube in visible:
-                pdx = (player_pos[0] - cube.x) / 100.0
-                pdy = (player_pos[1] - cube.y) / 100.0
-                pdz = (player_pos[2] - cube.z) / 100.0
-                cdist_h = math.sqrt(pdx * pdx + pdy * pdy)
-                cdist = math.sqrt(pdx * pdx + pdy * pdy + pdz * pdz)
-                if cdist < closest_dist:
-                    closest_dist = cdist
-                    closest_cube = cube
-                    closest_pdx = pdx
-                    closest_pdy = pdy
-                    closest_pdz = pdz
-                    closest_horiz = cdist_h
-        if closest_cube:
-            if closest_dist <= 25.0:
-                radar_range_m = 35.0
-            elif closest_dist <= 50.0:
-                radar_range_m = 65.0
-            elif closest_dist <= 85.0:
-                radar_range_m = 100.0
+        if player_pos:
+            self._draw_player_circle(cx, cy)
+            self.canvas.create_text(cx, cy + 12, text='YOU', fill=self.player_color, font=('Segoe UI', 7, 'bold'))
+            if visible:
+                closest_cube: Optional[CubeItem] = None
+                closest_dist = float('inf')
+                closest_cdz = 0.0
+                closest_screen_pos = None
+                max_r = R - 14
+                for cube in visible:
+                    cdx = (cube.x - player_pos[0]) / 100.0
+                    cdy = (cube.y - player_pos[1]) / 100.0
+                    cdz = (cube.z - player_pos[2]) / 100.0
+                    cdist = math.sqrt(cdx * cdx + cdy * cdy + cdz * cdz)
+                    screen_off_x = cdy * eff_scale
+                    screen_off_y = -cdx * eff_scale
+                    r_dist = math.hypot(screen_off_x, screen_off_y)
+                    if r_dist > max_r:
+                        ratio = max_r / r_dist
+                        cube_x = cx + screen_off_x * ratio
+                        cube_y = cy + screen_off_y * ratio
+                    else:
+                        cube_x = cx + screen_off_x
+                        cube_y = cy + screen_off_y
+                    self._draw_cube_circle(cube_x, cube_y)
+                    if cdist < closest_dist:
+                        closest_dist = cdist
+                        closest_cube = cube
+                        closest_cdz = cdz
+                        closest_screen_pos = (cube_x, cube_y)
+                if closest_cube and closest_screen_pos:
+                    dist_m = closest_dist
+                    delta = dist_m - self._last_dist if self._last_dist is not None else 0.0
+                    self._last_dist = dist_m
+                    ccx, ccy = closest_screen_pos
+                    line_color = self.cube_color if delta > 0 else self.player_color
+                    self.canvas.create_line(cx, cy, ccx, ccy, fill=line_color, dash=(3, 3), width=1.5)
+                    lbl_text = f'{dist_m:.0f}m'
+                    if abs(closest_cdz) >= 2.5:
+                        lbl_text += f" ({('+' if closest_cdz > 0 else '')}{closest_cdz:.0f}m)"
+                    lbl_y = ccy + 14 if ccy < 25 else ccy - 14
+                    self.canvas.create_text(ccx, lbl_y, text=lbl_text, fill=self.cube_color, font=('Segoe UI', 8, 'bold'))
             else:
-                radar_range_m = math.ceil(closest_dist * 1.2 / 20.0) * 20.0
-        else:
-            radar_range_m = 50.0
-        eff_scale = (R - 20) / radar_range_m
-        self.canvas.create_text(cx, cy + R - 10, text=f'Radar: {int(radar_range_m)}m', fill='#475569', font=('Segoe UI', 7))
-        if closest_cube and player_pos:
-            dist_m = closest_dist
-            delta = dist_m - self._last_dist if self._last_dist is not None else 0.0
-            self._last_dist = dist_m
-            self._draw_cube_circle(cx, cy)
-            lbl_text = f'{dist_m:.0f}m'
-            if abs(closest_pdz) >= 2.5:
-                cube_z_diff = -closest_pdz
-                lbl_text += f" ({('+' if cube_z_diff > 0 else '')}{cube_z_diff:.0f}m)"
-            self.canvas.create_text(cx, cy - 14, text=lbl_text, fill=self.cube_color, font=('Segoe UI', 8, 'bold'))
-            screen_off_x = closest_pdy * eff_scale
-            screen_off_y = -closest_pdx * eff_scale
-            r_dist = math.hypot(screen_off_x, screen_off_y)
-            if r_dist > R - 16:
-                ratio = (R - 16) / r_dist
-                cpx = cx + screen_off_x * ratio
-                cpy = cy + screen_off_y * ratio
-            else:
-                cpx = cx + screen_off_x
-                cpy = cy + screen_off_y
-            self.canvas.create_line(cpx, cpy, cx, cy, fill=self.cube_color if delta > 0 else self.player_color, dash=(3, 3), width=1.5)
-            self._draw_player_circle(cpx, cpy)
-            self.canvas.create_text(cpx, cpy + 12, text='YOU', fill=self.player_color, font=('Segoe UI', 7, 'bold'))
+                self._last_dist = None
+                self.canvas.create_text(cx, cy - 20, text='Searching Hidden Cube...', fill='#64748B', font=('Segoe UI', 8))
+                self.canvas.create_text(cx, cy + 34, text=f'Pos: {player_pos[0]:.0f}, {player_pos[1]:.0f}', fill='#00E676', font=('Segoe UI', 7))
         else:
             self._last_dist = None
             self.canvas.create_oval(cx - 5, cy - 5, cx + 5, cy + 5, fill='#1E293B', outline='#475569')
-            self.canvas.create_text(cx, cy + 18, text='Searching Hidden Cube...', fill='#64748B', font=('Segoe UI', 8))
-            if player_pos:
-                self._draw_player_circle(cx, cy)
-                self.canvas.create_text(cx, cy + 34, text=f'Pos: {player_pos[0]:.0f}, {player_pos[1]:.0f}', fill='#00E676', font=('Segoe UI', 7))
+            self.canvas.create_text(cx, cy + 18, text='Waiting for Player Position...', fill='#64748B', font=('Segoe UI', 8))
 
 def start_pure_sniffer(state: RadarState, port_override: Optional[int]=None):
     engine = PureStreamEngine(state)

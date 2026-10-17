@@ -41,18 +41,20 @@ Player position and movement are synchronized with zero lag:
 * **Continuous Flow**: Stream coordinate range (`0x3710` - `0x3750` / 14096 - 14160) coupled with client-to-server movement frames and dead-reckoning extrapolation between server ticks.
 * **Zone Transitions**: Teleports and world transitions (`0x3623` / 13859 and `0x561E` / 22046) automatically reset radar state and reposition coordinates.
 
-### 4. Target-Lock Coordinate System
-Traditional rotating radars can be disorienting when navigating terrain. A2 HCR uses an anchored target-lock design:
-* The Hidden Cube is anchored at the exact center of the radar as a stationary red circle.
-* Your character is displayed as a green circle (labeled "YOU") positioned at the relative distance and direction.
-* As you walk towards the cube in the game, your green circle visibly advances across the radar towards the center cube until they intersect at 0 meters.
+### 4. Player-Centered 150m Coordinate System
+A2 HCR uses an intuitive player-centered 150-meter fixed radar system:
+* Your character is anchored stationary at the exact center of the radar as a green circle (labeled "YOU").
+* Hidden Cubes appear as red circles positioned around you at their true relative world bearing and distance.
+* Fixed 150-meter scale (outer boundary = 150m, middle dashed ring = 75m, center = 0m). No dynamic scale jumps or treadmill effects.
+* As you walk towards a cube in the game, the red cube smoothly glides inward directly toward you at the center until you reach it.
 
 ---
 
 ## Features
 
-* **Stationary Target-Lock**: The target cube stays completely fixed at the center, eliminating compass spinning and directional disorientation.
-* **Stepped Visual Scale**: Uses calibrated distance tiers (35m, 65m, 100m+) rather than dynamic normalization, allowing you to clearly see your character physically closing the gap step by step.
+* **Player-Centered Navigation**: Your character stays fixed at the center ("YOU"), with cubes moving inward as you approach them.
+* **Fixed 150m Visual Range**: Consistent 1:1 scale (outer ring = 150m, middle ring = 75m) eliminating sudden zoom resets.
+* **Multi-Cube Tracking**: Renders all detected cubes within 150 meters, prioritizing the closest one with an active tracking line.
 * **Live Distance and Elevation**: Displays precise 3D distance in meters along with height difference (e.g., `24m (+4m)` indicating the cube is on a cliff or rooftop above you).
 * **Live Coordinates Display**: Shows current player coordinates on the overlay even while searching for cubes.
 * **Audible Alert**: Plays a distinct notification beep upon detecting a hidden cube, with a quick mute button on the header.
