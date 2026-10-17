@@ -10,7 +10,7 @@ A2 HCR (Aion 2 Hidden Cube Radar) is an external HUD overlay that provides real-
 
 ### Safety and Anti-Cheat Compliance
 
-* **100% Passive Network Inspection**: The application operates strictly as a network packet reader using Npcap and Scapy on local game TCP traffic (ports 13328 and 13320).
+* **100% Passive Network Inspection**: The application operates strictly as a network packet reader using Npcap and Scapy on local game TCP traffic across Aion 2 server ports (13328 and 13320).
 * **Zero Memory Hooks**: Does not call `OpenProcess`, `ReadProcessMemory`, or `WriteProcessMemory`.
 * **Zero Injections**: No DLL injection, API hooking, or thread manipulation.
 * **Zero Game File Modifications**: Does not alter game binaries, pak files, or configuration files.
@@ -23,11 +23,19 @@ A2 HCR (Aion 2 Hidden Cube Radar) is an external HUD overlay that provides real-
 ### 1. Packet Stream Processing
 Aion 2 communicates via TCP with variable-length framed packets compressed with LZ4. A2 HCR passively reconstructs the TCP stream, decompresses LZ4 blocks, and extracts packet frames using unsigned variable-length integer (varint) decoding across both active server ports (13328 and 13320).
 
-### 2. Accurate Cube Filtering
-The radar monitors entity spawn and update opcodes (`0x3634`, `0x3635`, `0x3638`, `0x363A`). Detected object models and category identifiers are matched against an internal database of valid Hidden Cube textures (`HiddenCube_01`, `HiddenCube_02`, V01 through V05). False positives such as God Fragments, quest containers, and ordinary loot boxes are strictly excluded.
+### 2. Accurate Cube Detection & Lifecycle
+The radar monitors entity spawn, update, and despawn opcodes:
+* `0x3634` (13876): Hidden Cube entity spawn. Detected object models and category identifiers are matched against an internal database of valid Hidden Cube textures (`HiddenCube_01`, `HiddenCube_02`, V01 through V05) for both Elyos and Asmodian factions. False positives such as God Fragments, quest containers, and ordinary loot boxes are strictly excluded.
+* `0x3635` (13877) & `0x363A` (13882): Cube despawn or collected by any player.
+* `0x8D6D` (36205): Gathering interaction completion, instantly clearing harvested cubes.
 
 ### 3. Real-Time Movement Synchronization
-Player position and movement are synchronized using server-to-client position updates (walking `0x382B`, dashing `0x382A`, flight/wings `0x382C`, and coordinate sync `0x3710-0x3750`) combined with client-to-server movement frames and dead-reckoning extrapolation. This eliminates delay and delivers immediate visual feedback on every step.
+Player position and movement are synchronized with zero lag:
+* **Identity Lock**: Automatic character identification via `0x3633` (character spawn) and `0x8D00` (server sync), locking your unique Entity ID on startup without writing to disk.
+* **Walking & Running**: Server position broadcasts (`0x382B` / 14379) updated continuously during standard WASD movement.
+* **High-Speed Intikals**: Dash maneuvers (`0x382A` / 14378), wings and flight gliding (`0x382C` / 14380), and combat repositioning (`0x3804` / 14340).
+* **Continuous Flow**: Stream coordinate range (`0x3710` - `0x3750` / 14096 - 14160) coupled with client-to-server movement frames and dead-reckoning extrapolation between server ticks.
+* **Zone Transitions**: Teleports and world transitions (`0x3623` / 13859 and `0x561E` / 22046) automatically reset radar state and reposition coordinates.
 
 ### 4. Target-Lock Coordinate System
 Traditional rotating radars can be disorienting when navigating terrain. A2 HCR uses an anchored target-lock design:
@@ -42,7 +50,7 @@ Traditional rotating radars can be disorienting when navigating terrain. A2 HCR 
 * **Stationary Target-Lock**: The target cube stays completely fixed at the center, eliminating compass spinning and directional disorientation.
 * **Stepped Visual Scale**: Uses calibrated distance tiers (35m, 65m, 100m+) rather than dynamic normalization, allowing you to clearly see your character physically closing the gap step by step.
 * **Live Distance and Elevation**: Displays precise 3D distance in meters along with height difference (e.g., `24m (+4m)` indicating the cube is on a cliff or rooftop above you).
-* **Live Coordinates**: Shows current player coordinates on the overlay even while searching for cubes.
+* **Live Coordinates Display**: Shows current player coordinates on the overlay even while searching for cubes.
 * **Audible Alert**: Plays a distinct notification beep upon detecting a hidden cube, with a quick mute button on the header.
 * **Zero-Storage Privacy**: Character name input is prompted fresh on every startup and is never written to disk or config files.
 * **Draggable Overlay**: Left-click and drag the window to place it anywhere on your desktop or secondary monitor.

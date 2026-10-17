@@ -19,7 +19,7 @@ if sys.platform == 'win32':
 import tkinter as tk
 import lz4.block
 import psutil
-from scapy.all import AsyncSniffer, IP, TCP, PcapReader
+from scapy.all import sniff, IP, TCP, PcapReader
 
 @dataclass
 class Aion2ConnectionInfo:
@@ -249,10 +249,17 @@ class RadarState:
             self.last_dist = None
             self.dist_delta = 0.0
 
-    def add_cube(self, cube: CubeItem):
+    def add_cube(self, cube: CubeItem) -> bool:
         with self.lock:
+            is_new = cube.entity_id not in self.cubes
             self.cubes[cube.entity_id] = cube
+            if len(self.cubes) > 100 and self.player_pos:
+                px, py, pz = self.player_pos
+                to_pop = [eid for eid, c in self.cubes.items() if (c.x - px) ** 2 + (c.y - py) ** 2 > 35000.0 * 35000.0]
+                for eid in to_pop:
+                    self.cubes.pop(eid, None)
         self.notify_update()
+        return is_new
 
     def remove_cube(self, eid: int):
         with self.lock:
@@ -312,8 +319,11 @@ class PureStreamEngine:
             except Exception:
                 break
             body_len = encoded_len - 4
+            if body_len < 2:
+                off += 1
+                continue
             frame_total_len = varint_len + body_len
-            if off + frame_total_len > p_len:
+            if frame_total_len <= varint_len or off + frame_total_len > p_len:
                 break
             frame_body = payload[off + varint_len:off + frame_total_len]
             off += frame_total_len
@@ -324,6 +334,8 @@ class PureStreamEngine:
             return
         if body[:2] == b'\xff\xff' and len(body) >= 6:
             plain_size = struct.unpack('<I', body[2:6])[0]
+            if plain_size <= 0 or plain_size > 262144:
+                return
             try:
                 decompressed = lz4.block.decompress(body[6:], uncompressed_size=plain_size)
                 self.walk_decompressed(decompressed, depth + 1)
@@ -332,6 +344,8 @@ class PureStreamEngine:
                 pass
         elif len(body) >= 7 and 240 <= body[0] < 255 and (body[1:3] == b'\xff\xff'):
             plain_size = struct.unpack('<I', body[3:7])[0]
+            if plain_size <= 0 or plain_size > 262144:
+                return
             try:
                 decompressed = lz4.block.decompress(body[7:], uncompressed_size=plain_size)
                 self.walk_decompressed(decompressed, depth + 1)
@@ -357,11 +371,9 @@ class PureStreamEngine:
                 if len(p) >= n + 18:
                     obj_id = struct.unpack('<I', p[n + 2:n + 6])[0]
                     if is_target_hidden_cube(obj_id):
-                        x, y, z = struct.unpack('<fff', p[n + 6:n + 18])
-                        is_new = eid not in self.state.cubes
                         name = HIDDEN_CUBE_IDS.get(obj_id, f'Hidden Cube ({obj_id})')
                         is_asmodian = obj_id in ASMODIAN_V04_IDS
-                        self.state.add_cube(CubeItem(entity_id=eid, npc_id=obj_id, name=name, x=x, y=y, z=z, is_asmodian=is_asmodian, model_name='HiddenCube'))
+                        is_new = self.state.add_cube(CubeItem(entity_id=eid, npc_id=obj_id, name=name, x=x, y=y, z=z, is_asmodian=is_asmodian, model_name='HiddenCube'))
                         if is_new and self.state.sound_enabled:
                             threading.Thread(target=play_cube_sound, args=(is_asmodian,), daemon=True).start()
             except Exception:
@@ -453,8 +465,11 @@ class PureStreamEngine:
             except ValueError:
                 break
             body_len = encoded_len - 4
+            if body_len < 2:
+                offset += 1
+                continue
             total_len = varint_len + body_len
-            if offset + total_len > d_len:
+            if total_len <= varint_len or offset + total_len > d_len:
                 break
             frame_body = data[offset + varint_len:offset + total_len]
             offset += total_len
@@ -533,7 +548,7 @@ class Pure2DRadarApp:
             self._draw_radar()
         except Exception:
             pass
-        self.root.after(33, self._render_loop)
+        self.root.after(40, self._render_loop)
 
     def _draw_player_circle(self, px: float, py: float):
         r = 7.0
@@ -648,10 +663,11 @@ def start_pure_sniffer(state: RadarState, port_override: Optional[int]=None):
             payload = bytes(pkt[TCP].payload)
             if payload:
                 engine.feed_payload(pkt[IP].src, pkt[TCP].sport, pkt[IP].dst, pkt[TCP].dport, payload)
-    sniffer = AsyncSniffer(filter=bpf_filter, prn=on_packet, store=False)
-    sniffer.start()
     while True:
-        time.sleep(1)
+        try:
+            sniff(filter=bpf_filter, prn=on_packet, store=False)
+        except Exception:
+            time.sleep(1)
 
 def replay_pure_pcap(state: RadarState, pcap_path: str):
     engine = PureStreamEngine(state)
