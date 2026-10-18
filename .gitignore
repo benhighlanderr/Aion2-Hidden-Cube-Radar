@@ -1,0 +1,9 @@
+captures/
+*.pcap
+*.log
+s2c_log_*.txt
+s2c_packet_analyzer.py
+HIGHLANDER_Paket_Dinleyici.bat
+__pycache__/
+*.pyc
+A2HCR-v1.1.0.zip

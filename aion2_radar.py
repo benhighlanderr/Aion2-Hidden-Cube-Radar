@@ -140,19 +140,10 @@ class RadarState:
         self.player_id_locked: bool = False
         self.cubes: Dict[int, CubeItem] = {}
         self.packet_count: int = 0
-        self.range_meters: float = 100.0
+        self.range_meters: float = 150.0
         self.sound_enabled: bool = True
         self.target_char_name: str = ''
         self.last_pos_time: float = 0.0
-        self.last_sim_time: float = 0.0
-        self.vel_x: float = 0.0
-        self.vel_y: float = 0.0
-        self.est_player_pos: Optional[Tuple[float, float, float]] = None
-        self.extrapolation_enabled: bool = True
-        self.last_c2s_step_time: float = 0.0
-        self.last_c2s_move_time: float = 0.0
-        self.base_walk_speed: float = 650.0
-        self.c2s_step_count: int = 0
         self.on_update_callback: Optional[Any] = None
 
     def notify_update(self):
@@ -174,63 +165,12 @@ class RadarState:
                 dx = x - self.player_pos[0]
                 dy = y - self.player_pos[1]
                 dist = math.hypot(dx, dy)
-                if dist > 50.0:
-                    heading = math.atan2(dx, dy)
-                    self.player_heading = heading
-                    self.vel_x = math.sin(heading) * self.base_walk_speed
-                    self.vel_y = math.cos(heading) * self.base_walk_speed
+                if dist >= 50.0:
+                    self.player_heading = math.atan2(dx, dy)
             self.player_pos = (x, y, z)
-            self.est_player_pos = (x, y, z)
             self.last_pos_time = now
-            self.last_sim_time = now
         self.notify_update()
         return True
-
-    def get_estimated_player_pos(self) -> Optional[Tuple[float, float, float]]:
-        if not self.player_pos:
-            return None
-        now = time.time()
-        if not self.extrapolation_enabled or self.last_sim_time <= 0:
-            return self.player_pos
-        dt = now - self.last_sim_time
-        self.last_sim_time = now
-        if dt <= 0:
-            return self.est_player_pos or self.player_pos
-        dt = min(dt, 0.15)
-        is_moving = (now - self.last_c2s_step_time) < 0.35
-        if not is_moving:
-            return self.est_player_pos or self.player_pos
-        vx, vy = self.vel_x, self.vel_y
-        if vx == 0.0 and vy == 0.0 and self.cubes:
-            closest_c = None
-            min_d = float('inf')
-            cur = self.est_player_pos or self.player_pos
-            for c in self.cubes.values():
-                d = math.hypot(c.x - cur[0], c.y - cur[1])
-                if d < min_d:
-                    min_d = d
-                    closest_c = c
-            if closest_c and min_d > 100.0:
-                cdx = closest_c.x - cur[0]
-                cdy = closest_c.y - cur[1]
-                cd = math.hypot(cdx, cdy)
-                vx = (cdx / cd) * self.base_walk_speed
-                vy = (cdy / cd) * self.base_walk_speed
-        if vx != 0.0 or vy != 0.0:
-            cur = self.est_player_pos or self.player_pos
-            nx = cur[0] + vx * dt
-            ny = cur[1] + vy * dt
-            self.est_player_pos = (nx, ny, self.player_pos[2])
-            return self.est_player_pos
-        return self.est_player_pos or self.player_pos
-
-    def on_c2s_movement_frame(self, frame_len: int):
-        now = time.time()
-        with self.lock:
-            self.last_c2s_step_time = now
-            self.last_c2s_move_time = now
-            self.c2s_step_count += 1
-        self.notify_update()
 
     def update_dist_delta(self, curr_dist: float):
         with self.lock:
@@ -253,12 +193,8 @@ class RadarState:
             self.cubes.clear()
             self.player_entity_id = None
             self.player_id_locked = False
-            self.vel_x = 0.0
-            self.vel_y = 0.0
             self.player_heading = None
-            self.est_player_pos = None
             self.last_pos_time = 0.0
-            self.last_sim_time = 0.0
             self.last_dist = None
             self.dist_delta = 0.0
 
@@ -297,8 +233,7 @@ class RadarState:
 
     def get_snapshot(self):
         with self.lock:
-            est_pos = self.get_estimated_player_pos()
-            return {'player_pos': est_pos, 'raw_player_pos': self.player_pos, 'player_heading': self.player_heading, 'last_dist': self.last_dist, 'dist_delta': self.dist_delta, 'player_entity_id': self.player_entity_id, 'cubes': list(self.cubes.values()), 'packet_count': self.packet_count, 'range_meters': self.range_meters, 'extrapolation_enabled': self.extrapolation_enabled, 'target_char_name': self.target_char_name, 'player_id_locked': self.player_id_locked}
+            return {'player_pos': self.player_pos, 'raw_player_pos': self.player_pos, 'player_heading': self.player_heading, 'last_dist': self.last_dist, 'dist_delta': self.dist_delta, 'player_entity_id': self.player_entity_id, 'cubes': list(self.cubes.values()), 'packet_count': self.packet_count, 'range_meters': self.range_meters, 'target_char_name': self.target_char_name, 'player_id_locked': self.player_id_locked}
 
 def is_valid_coord(x: float, y: float, z: float) -> bool:
     if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
@@ -317,8 +252,7 @@ class PureStreamEngine:
     def feed_payload(self, src_ip: str, src_port: int, dst_ip: str, dst_port: int, payload: bytes):
         if not payload:
             return
-        if dst_port in (13328, 13320) and len(payload) not in (11, 12, 16):
-            self.state.on_c2s_movement_frame(len(payload))
+        if dst_port in (13328, 13320):
             return
         self.state.packet_count += 1
         off = 0

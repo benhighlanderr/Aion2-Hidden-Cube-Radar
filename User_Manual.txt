@@ -48,6 +48,18 @@ RADAR DISPLAY & CONTROLS
   A distinctive sound notification plays whenever a new Hidden Cube appears within range.
   Toggle sound on or off at any time using the speaker button on the top header.
 
+* DISTANCE REFRESH & NETCODE NOTE:
+  Due to Aion 2's server netcode, the server broadcasts verified 3D player coordinates
+  during active movement events rather than basic peace-mode walking.
+  To refresh and update your live distance and bearing to the Hidden Cube while moving,
+  simply perform any of the following quick actions:
+  - Dash (Shift / Dash maneuver)
+  - Jump (Space bar)
+  - Wing Toggle or Gliding
+  - Combat Stance (Tab / Weapon drawn)
+  Performing any of these actions instantly prompts a verified server coordinate broadcast,
+  updating the radar and target distance with 100% mathematical precision.
+
 * DRAGGING & RESIZING:
   Click and drag anywhere on the header or radar canvas to move the overlay to your desired screen position.
   Click "X" in the top-right corner to exit the radar.
@@ -59,5 +71,5 @@ TECHNICAL SPECIFICATIONS
 * Monitored Game Ports: TCP 13328 and 13320 (Aion 2 game servers)
 * Packet Decoding: Zero-copy uvarint stream framer with multi-stage LZ4 decompression
 * Cube Filter: Texture-verified database excluding quest containers and decoys
-* Movement Sync: High-precision server packet tracking (0x382A, 0x382B, 0x382C) with dead-reckoning extrapolation
+* Movement Sync: High-precision server packet tracking (0x382A, 0x382B, 0x382C, 0x3804) triggered on Dash, Jump, Wings, and Combat Stance
 ====================================================

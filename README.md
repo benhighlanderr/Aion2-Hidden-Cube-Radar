@@ -34,11 +34,13 @@ The radar monitors entity spawn, update, and despawn opcodes:
 * `0x8D6D` (36205): Gathering interaction completion, instantly clearing harvested cubes.
 
 ### 3. Real-Time Movement Synchronization
-Player position and movement are synchronized with zero lag:
+Player position and movement are synchronized strictly using verified server ground-truth:
 * **Identity Lock**: Automatic character identification via `0x3633` (character spawn) and `0x8D00` (server sync), locking your unique Entity ID on startup without writing to disk.
-* **Walking & Running**: Server position broadcasts (`0x382B` / 14379) updated continuously during standard WASD movement.
-* **High-Speed Intikals**: Dash maneuvers (`0x382A` / 14378), wings and flight gliding (`0x382C` / 14380), and combat repositioning (`0x3804` / 14340).
-* **Continuous Flow**: Stream coordinate range (`0x3710` - `0x3750` / 14096 - 14160) coupled with client-to-server movement frames and dead-reckoning extrapolation between server ticks.
+* **Server Action Broadcasts**: Aion 2 server netcode broadcasts 3D coordinates during active movement events:
+  * **Dash Maneuvers**: Instant coordinate broadcast via `0x382A` (14378).
+  * **Jump & Vertical Evades**: High-precision height and horizontal updates via `0x382A` (14378) and `0x3804` (14340).
+  * **Wing Deployment & Gliding**: Flight vector updates via `0x382A` (14378) and `0x382C` (14380).
+  * **Combat Stance Movement**: Continuous position broadcasts via `0x382B` (14379) when weapon is drawn (Tab).
 * **Zone Transitions**: Teleports and world transitions (`0x3623` / 13859 and `0x561E` / 22046) automatically reset radar state and reposition coordinates.
 
 ### 4. Player-Centered 150m Coordinate System
@@ -105,6 +107,15 @@ A2 HCR uses an intuitive player-centered 150-meter fixed radar system:
    * If left blank, automatic network entity resolution is used.
 
 3. Position the radar overlay over your game (Borderless Fullscreen or Windowed mode recommended).
+
+### Distance Refresh & In-Game Navigation Tip
+Due to Aion 2's network architecture, server position packets are triggered by movement actions rather than peace-mode ground walking. While navigating toward a Hidden Cube, perform any of the following quick in-game actions to immediately refresh the exact target distance and bearing:
+* **Dash**: Press your Dash key (Shift).
+* **Jump**: Press Space bar.
+* **Wings**: Deploy or toggle wings / glide.
+* **Combat Stance**: Press `Tab` to draw your weapon.
+
+Each action prompts the game server to emit verified 3D coordinates, updating the radar with 100% ground-truth accuracy.
 
 ---
 
