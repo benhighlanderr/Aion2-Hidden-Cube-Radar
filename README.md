@@ -59,7 +59,8 @@ A2 HCR uses an intuitive player-centered 150-meter fixed radar system:
 * **Multi-Cube Tracking**: Renders all detected cubes within 150 meters, prioritizing the closest one with an active tracking line.
 * **Live Distance and Elevation**: Displays precise 3D distance in meters along with height difference (e.g., `24m (+4m)` indicating the cube is on a cliff or rooftop above you).
 * **Live Coordinates Display**: Shows current player coordinates on the overlay even while searching for cubes.
-* **Audible Alert**: Plays a distinct notification beep upon detecting a hidden cube, with a quick mute button on the header.
+* **Audible Alert & Sound Profiles**: Select from 5 distinct audio alert profiles (Radar Ping, Classic Beep, Double Chime, Sci-Fi Pulse, Subtle Click) with live volume slider (0-100%) and instant sound preview.
+* **Customization Settings**: Dedicated Settings panel (gear icon) to adjust radar opacity (transparency), sound profiles, volume level, and choose custom player and cube colors.
 * **Zero-Storage Privacy**: Character name input is prompted fresh on every startup and is never written to disk or config files.
 * **Draggable Overlay**: Left-click and drag the window to place it anywhere on your desktop or secondary monitor.
 
@@ -122,7 +123,7 @@ Each action prompts the game server to emit verified 3D coordinates, updating th
 ## Controls
 
 * **Move Overlay**: Left-click and drag anywhere on the title bar or radar circle.
-* **Mute Button**: Toggle audible notification alerts on or off.
+* **Settings Button (gear icon)**: Open the settings panel to configure opacity, sound, volume, and colors.
 * **Close (X Button)**: Terminate the radar overlay.
 
 ---

@@ -44,9 +44,13 @@ RADAR DISPLAY & CONTROLS
 * SEARCHING STATUS & LIVE POSITION:
   When no cube is currently nearby, the radar displays "Searching for Cubes..." along with your live player coordinates.
 
-* AUDIO ALERT:
-  A distinctive sound notification plays whenever a new Hidden Cube appears within range.
-  Toggle sound on or off at any time using the speaker button on the top header.
+* SETTINGS & CUSTOMIZATION MENU:
+  Click the Settings button (gear icon) on the top header to open the settings panel:
+  - Radar Opacity: Adjust overlay transparency from 20% to 100% in real time.
+  - Sound Toggle & Alert Tones: Turn alerts on or off, and choose from 5 audio sound profiles (Radar Ping, Classic Beep, Double Chime, Sci-Fi Pulse, Subtle Click).
+  - Volume Control: Smoothly scale notification alert volume from 0% to 100%, with an instant test button.
+  - Player & Cube Colors: Choose custom color palettes for your character icon and target cubes.
+  Preferences are automatically saved to your local config.
 
 * DISTANCE REFRESH & NETCODE NOTE:
   Due to Aion 2's server netcode, the server broadcasts verified 3D player coordinates

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import argparse
+import io
 import json
 import math
 import os
@@ -7,16 +8,22 @@ import struct
 import sys
 import threading
 import time
+import wave
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 if sys.platform == 'win32':
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
+    try:
+        import winsound
+    except Exception:
+        pass
 import tkinter as tk
+from tkinter import colorchooser, ttk
 import lz4.block
 import psutil
 from scapy.all import sniff, IP, TCP, PcapReader
@@ -70,14 +77,67 @@ def decode_uvarint(data: bytes, offset: int=0) -> Tuple[int, int]:
             return (value, i + 1)
     raise ValueError('uvarint exceeds 5 bytes')
 
-def play_cube_sound(is_asmodian: bool=False):
+SOUND_PROFILES: Dict[str, List[Tuple[float, float, bool]]] = {
+    'Radar Ping': [(1250.0, 220.0, True)],
+    'Classic Beep': [(900.0, 150.0, False)],
+    'Double Chime': [(750.0, 70.0, False), (0.0, 25.0, False), (1250.0, 140.0, True)],
+    'Sci-Fi Pulse': [(520.0, 70.0, False), (1040.0, 160.0, True)],
+    'Subtle Click': [(1600.0, 45.0, True)]
+}
+
+def load_radar_settings() -> dict:
+    defaults = {'alpha': 0.9, 'sound_enabled': True, 'sound_volume': 0.7, 'sound_profile': 'Radar Ping', 'player_color': '#00E676', 'cube_color': '#FF1744'}
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'radar_settings.json')
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    defaults.update(data)
+        except Exception:
+            pass
+    return defaults
+
+def save_radar_settings(settings: dict):
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'radar_settings.json')
     try:
-        import winsound
-        if is_asmodian:
-            winsound.Beep(1400, 180)
-            winsound.Beep(2100, 320)
-        else:
-            winsound.Beep(900, 150)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2)
+    except Exception:
+        pass
+
+def make_profile_wav(profile_name: str, volume: float=0.7, is_asmodian: bool=False) -> bytes:
+    sample_rate = 44100
+    if is_asmodian:
+        tones = [(1400.0, 120.0, False), (0.0, 30.0, False), (2100.0, 240.0, True)]
+    else:
+        tones = SOUND_PROFILES.get(profile_name, SOUND_PROFILES['Radar Ping'])
+    data = bytearray()
+    amp = int(32767 * max(0.0, min(1.0, volume)))
+    for freq, dur, decay in tones:
+        n_samples = int(sample_rate * (dur / 1000.0))
+        for i in range(n_samples):
+            if freq <= 0.0:
+                data.extend(b'\x00\x00')
+            else:
+                t = i / sample_rate
+                env = (1.0 - (i / n_samples)) if decay else 1.0
+                val = int(amp * env * math.sin(2.0 * math.pi * freq * t))
+                data.extend(struct.pack('<h', val))
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(data)
+    return buf.getvalue()
+
+def play_cube_sound(is_asmodian: bool=False, volume: float=0.7, sound_profile: str='Radar Ping'):
+    if volume <= 0.001:
+        return
+    try:
+        wav = make_profile_wav(sound_profile, volume, is_asmodian)
+        winsound.PlaySound(wav, winsound.SND_MEMORY)
     except Exception:
         try:
             sys.stdout.write('\x07')
@@ -142,6 +202,8 @@ class RadarState:
         self.packet_count: int = 0
         self.range_meters: float = 150.0
         self.sound_enabled: bool = True
+        self.sound_volume: float = 0.7
+        self.sound_profile: str = 'Radar Ping'
         self.target_char_name: str = ''
         self.last_pos_time: float = 0.0
         self.on_update_callback: Optional[Any] = None
@@ -323,7 +385,7 @@ class PureStreamEngine:
                         is_asmodian = obj_id in ASMODIAN_V04_IDS
                         is_new = self.state.add_cube(CubeItem(entity_id=eid, npc_id=obj_id, name=name, x=x, y=y, z=z, is_asmodian=is_asmodian, model_name='HiddenCube'))
                         if is_new and self.state.sound_enabled:
-                            threading.Thread(target=play_cube_sound, args=(is_asmodian,), daemon=True).start()
+                            threading.Thread(target=play_cube_sound, args=(is_asmodian, self.state.sound_volume, self.state.sound_profile), daemon=True).start()
             except Exception:
                 pass
         elif opcode == 13877:
@@ -428,24 +490,29 @@ class Pure2DRadarApp:
     def __init__(self, root: tk.Tk, state: RadarState):
         self.root = root
         self.state = state
+        settings = load_radar_settings()
+        self.current_alpha = float(settings.get('alpha', 0.9))
+        self.state.sound_enabled = bool(settings.get('sound_enabled', True))
+        self.state.sound_volume = float(settings.get('sound_volume', 0.7))
+        self.state.sound_profile = str(settings.get('sound_profile', 'Radar Ping'))
+        self.player_color = str(settings.get('player_color', '#00E676'))
+        self.cube_color = str(settings.get('cube_color', '#FF1744'))
+        self.settings_win: Optional[tk.Toplevel] = None
         char_display = self.state.target_char_name or 'Player'
         self.root.title(f'A2 HCR - {char_display}')
-        self.base_width = 252
-        self.base_height = 282
+        self.base_width = 260
+        self.base_height = 290
         self.root.geometry(f'{self.base_width}x{self.base_height}+1600+80')
         self.root.overrideredirect(True)
         self.root.attributes('-topmost', True)
-        self.current_alpha = 0.9
         self.root.attributes('-alpha', self.current_alpha)
         self.root.configure(bg='#050811')
-        self.player_color = '#00E676'
-        self.cube_color = '#FF1744'
         self._drag_x = 0
         self._drag_y = 0
-        self.canvas_size = 250
+        self.canvas_size = 256
         self.cx = self.canvas_size // 2
         self.cy = self.canvas_size // 2
-        self.radar_radius = 112
+        self.radar_radius = 114
         self._last_dist: Optional[float] = None
         self._last_title = ''
         self._last_title_fg = ''
@@ -456,13 +523,13 @@ class Pure2DRadarApp:
     def _build_ui(self):
         self.header = tk.Frame(self.root, bg='#0E1626', height=28)
         self.header.pack(fill=tk.X, side=tk.TOP)
-        char_display = self.state.target_char_name or 'Player'
-        self.lbl_title = tk.Label(self.header, text=f'A2 HCR - {char_display}', font=('Segoe UI', 9, 'bold'), fg='#00E5FF', bg='#0E1626')
-        self.lbl_title.pack(side=tk.LEFT, padx=8, pady=4)
-        btn_close = tk.Button(self.header, text='X', font=('Segoe UI', 8, 'bold'), fg='#FF5252', bg='#0E1626', bd=0, padx=7, cursor='hand2', command=self._on_close)
+        btn_close = tk.Button(self.header, text='X', font=('Segoe UI', 8, 'bold'), fg='#FF5252', bg='#0E1626', activebackground='#26151E', activeforeground='#FF5252', bd=0, padx=7, cursor='hand2', command=self._on_close)
         btn_close.pack(side=tk.RIGHT, padx=2)
-        self.btn_sound = tk.Button(self.header, text='🔊', font=('Segoe UI', 8), fg='#00E676', bg='#0E1626', bd=0, padx=5, cursor='hand2', command=self._toggle_sound)
-        self.btn_sound.pack(side=tk.RIGHT, padx=1)
+        self.btn_settings = tk.Button(self.header, text='\u2699', font=('Segoe UI', 9), fg='#00E5FF', bg='#0E1626', activebackground='#141E33', activeforeground='#00E5FF', bd=0, padx=6, cursor='hand2', command=self._open_settings)
+        self.btn_settings.pack(side=tk.RIGHT, padx=2)
+        char_display = self.state.target_char_name or 'Player'
+        self.lbl_title = tk.Label(self.header, text=f'A2 HCR - {char_display}', font=('Segoe UI', 8, 'bold'), fg='#00E5FF', bg='#0E1626', anchor='w')
+        self.lbl_title.pack(side=tk.LEFT, padx=(8, 2), pady=4, fill=tk.X, expand=True)
         self.canvas = tk.Canvas(self.root, width=self.canvas_size, height=self.canvas_size, bg='#050811', highlightthickness=1, highlightbackground='#162238')
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
@@ -480,14 +547,137 @@ class Pure2DRadarApp:
         y = event.y_root - self._drag_y
         self.root.geometry(f'+{x}+{y}')
 
-    def _toggle_sound(self):
-        self.state.sound_enabled = not self.state.sound_enabled
-        if self.state.sound_enabled:
-            self.btn_sound.config(text='🔊', fg='#00E676')
-        else:
-            self.btn_sound.config(text='🔇', fg='#94A3B8')
+    def _save_current_settings(self):
+        save_radar_settings({'alpha': round(self.current_alpha, 2), 'sound_enabled': self.state.sound_enabled, 'sound_volume': round(self.state.sound_volume, 2), 'sound_profile': self.state.sound_profile, 'player_color': self.player_color, 'cube_color': self.cube_color})
+
+    def _open_settings(self):
+        if self.settings_win and self.settings_win.winfo_exists():
+            self.settings_win.lift()
+            self.settings_win.focus_force()
+            return
+        win = tk.Toplevel(self.root)
+        self.settings_win = win
+        win.title('A2 HCR - Settings')
+        win.configure(bg='#0B111E')
+        win.resizable(False, False)
+        win.attributes('-topmost', True)
+        rx = self.root.winfo_rootx()
+        ry = self.root.winfo_rooty()
+        win_w, win_h = 320, 485
+        pos_x = rx - win_w - 10 if rx - win_w - 10 > 20 else rx + self.base_width + 10
+        pos_y = max(40, ry)
+        win.geometry(f'{win_w}x{win_h}+{pos_x}+{pos_y}')
+        title_frame = tk.Frame(win, bg='#0B111E')
+        title_frame.pack(fill=tk.X, padx=16, pady=(14, 8))
+        tk.Label(title_frame, text='RADAR SETTINGS', font=('Segoe UI', 11, 'bold'), fg='#00E5FF', bg='#0B111E').pack(anchor='w')
+        tk.Label(title_frame, text='Configure overlay display and audio options', font=('Segoe UI', 8), fg='#64748B', bg='#0B111E').pack(anchor='w')
+        body = tk.Frame(win, bg='#0B111E')
+        body.pack(fill=tk.BOTH, expand=True, padx=16)
+        sec_view = tk.LabelFrame(body, text=' DISPLAY & APPEARANCE ', font=('Segoe UI', 8, 'bold'), fg='#38BDF8', bg='#0B111E', bd=1, relief=tk.SOLID)
+        sec_view.pack(fill=tk.X, pady=(0, 10), ipady=4)
+        op_frame = tk.Frame(sec_view, bg='#0B111E')
+        op_frame.pack(fill=tk.X, padx=10, pady=(4, 0))
+        tk.Label(op_frame, text='Radar Opacity:', font=('Segoe UI', 9), fg='#E2E8F0', bg='#0B111E').pack(side=tk.LEFT)
+        lbl_alpha_val = tk.Label(op_frame, text=f'{int(self.current_alpha * 100)}%', font=('Segoe UI', 9, 'bold'), fg='#00E5FF', bg='#0B111E')
+        lbl_alpha_val.pack(side=tk.RIGHT)
+
+        def on_alpha_change(val):
+            alpha = int(float(val)) / 100.0
+            self.current_alpha = max(0.2, min(1.0, alpha))
+            self.root.attributes('-alpha', self.current_alpha)
+            lbl_alpha_val.config(text=f'{int(self.current_alpha * 100)}%')
+            self._save_current_settings()
+
+        alpha_scale = tk.Scale(sec_view, from_=20, to=100, orient=tk.HORIZONTAL, showvalue=0, command=on_alpha_change, bg='#0B111E', fg='#00E5FF', troughcolor='#1E293B', activebackground='#00E5FF', bd=0, highlightthickness=0)
+        alpha_scale.set(int(self.current_alpha * 100))
+        alpha_scale.pack(fill=tk.X, padx=10, pady=(2, 8))
+        col_frame = tk.Frame(sec_view, bg='#0B111E')
+        col_frame.pack(fill=tk.X, padx=10, pady=4)
+        tk.Label(col_frame, text='Player Color:', font=('Segoe UI', 9), fg='#E2E8F0', bg='#0B111E').grid(row=0, column=0, sticky='w', pady=3)
+        player_preview = tk.Canvas(col_frame, width=32, height=18, bg=self.player_color, highlightthickness=1, highlightbackground='#475569', cursor='hand2')
+        player_preview.grid(row=0, column=1, padx=8, pady=3)
+
+        def pick_player_color(event=None):
+            chosen = colorchooser.askcolor(color=self.player_color, title='Select Player Color', parent=win)
+            if chosen and chosen[1]:
+                self.player_color = chosen[1]
+                player_preview.config(bg=self.player_color)
+                self._save_current_settings()
+
+        player_preview.bind('<Button-1>', pick_player_color)
+        btn_pick_player = tk.Button(col_frame, text='Pick', font=('Segoe UI', 8), fg='#FFFFFF', bg='#1E293B', activebackground='#334155', bd=0, padx=8, pady=1, cursor='hand2', command=pick_player_color)
+        btn_pick_player.grid(row=0, column=2, padx=4, pady=3)
+        tk.Label(col_frame, text='Cube Color:', font=('Segoe UI', 9), fg='#E2E8F0', bg='#0B111E').grid(row=1, column=0, sticky='w', pady=3)
+        cube_preview = tk.Canvas(col_frame, width=32, height=18, bg=self.cube_color, highlightthickness=1, highlightbackground='#475569', cursor='hand2')
+        cube_preview.grid(row=1, column=1, padx=8, pady=3)
+
+        def pick_cube_color(event=None):
+            chosen = colorchooser.askcolor(color=self.cube_color, title='Select Cube Color', parent=win)
+            if chosen and chosen[1]:
+                self.cube_color = chosen[1]
+                cube_preview.config(bg=self.cube_color)
+                self._save_current_settings()
+
+        cube_preview.bind('<Button-1>', pick_cube_color)
+        btn_pick_cube = tk.Button(col_frame, text='Pick', font=('Segoe UI', 8), fg='#FFFFFF', bg='#1E293B', activebackground='#334155', bd=0, padx=8, pady=1, cursor='hand2', command=pick_cube_color)
+        btn_pick_cube.grid(row=1, column=2, padx=4, pady=3)
+        sec_sound = tk.LabelFrame(body, text=' AUDIO SETTINGS ', font=('Segoe UI', 8, 'bold'), fg='#38BDF8', bg='#0B111E', bd=1, relief=tk.SOLID)
+        sec_sound.pack(fill=tk.X, pady=(0, 10), ipady=4)
+        sound_var = tk.BooleanVar(value=self.state.sound_enabled)
+
+        def on_sound_toggle():
+            self.state.sound_enabled = sound_var.get()
+            self._save_current_settings()
+
+        chk_sound = tk.Checkbutton(sec_sound, text='Enable Audio Alert', variable=sound_var, command=on_sound_toggle, font=('Segoe UI', 9), fg='#E2E8F0', bg='#0B111E', selectcolor='#1E293B', activebackground='#0B111E', activeforeground='#E2E8F0', bd=0, highlightthickness=0)
+        chk_sound.pack(anchor='w', padx=10, pady=(4, 4))
+        style = ttk.Style(win)
+        style.theme_use('clam')
+        style.configure('Dark.TCombobox', fieldbackground='#141E33', background='#1E293B', foreground='#FFFFFF', arrowcolor='#00E5FF', borderwidth=0)
+        tone_frame = tk.Frame(sec_sound, bg='#0B111E')
+        tone_frame.pack(fill=tk.X, padx=10, pady=(2, 6))
+        tk.Label(tone_frame, text='Alert Tone:', font=('Segoe UI', 9), fg='#E2E8F0', bg='#0B111E').pack(side=tk.LEFT)
+        tone_var = tk.StringVar(value=self.state.sound_profile)
+
+        def on_tone_change(event=None):
+            self.state.sound_profile = tone_var.get()
+            self._save_current_settings()
+            if self.state.sound_enabled:
+                threading.Thread(target=play_cube_sound, args=(False, self.state.sound_volume, self.state.sound_profile), daemon=True).start()
+
+        cb_tone = ttk.Combobox(tone_frame, textvariable=tone_var, values=list(SOUND_PROFILES.keys()), state='readonly', style='Dark.TCombobox', font=('Segoe UI', 8), width=14)
+        cb_tone.pack(side=tk.RIGHT)
+        cb_tone.bind('<<ComboboxSelected>>', on_tone_change)
+        vol_frame = tk.Frame(sec_sound, bg='#0B111E')
+        vol_frame.pack(fill=tk.X, padx=10, pady=(2, 0))
+        tk.Label(vol_frame, text='Sound Volume:', font=('Segoe UI', 9), fg='#E2E8F0', bg='#0B111E').pack(side=tk.LEFT)
+        lbl_vol_val = tk.Label(vol_frame, text=f'{int(self.state.sound_volume * 100)}%', font=('Segoe UI', 9, 'bold'), fg='#00E5FF', bg='#0B111E')
+        lbl_vol_val.pack(side=tk.RIGHT)
+
+        def on_vol_change(val):
+            vol = int(float(val)) / 100.0
+            self.state.sound_volume = max(0.0, min(1.0, vol))
+            lbl_vol_val.config(text=f'{int(self.state.sound_volume * 100)}%')
+            self._save_current_settings()
+
+        vol_scale = tk.Scale(sec_sound, from_=0, to=100, orient=tk.HORIZONTAL, showvalue=0, command=on_vol_change, bg='#0B111E', fg='#00E5FF', troughcolor='#1E293B', activebackground='#00E5FF', bd=0, highlightthickness=0)
+        vol_scale.set(int(self.state.sound_volume * 100))
+        vol_scale.pack(fill=tk.X, padx=10, pady=(2, 6))
+
+        def test_sound_click():
+            threading.Thread(target=play_cube_sound, args=(False, self.state.sound_volume, self.state.sound_profile), daemon=True).start()
+
+        btn_test_sound = tk.Button(sec_sound, text='Test Sound', font=('Segoe UI', 8, 'bold'), fg='#00E5FF', bg='#1E293B', activebackground='#334155', bd=0, padx=12, pady=3, cursor='hand2', command=test_sound_click)
+        btn_test_sound.pack(anchor='e', padx=10, pady=(0, 6))
+        btn_close_settings = tk.Button(win, text='Done', font=('Segoe UI', 9, 'bold'), fg='#050811', bg='#00E5FF', activebackground='#38BDF8', bd=0, pady=5, cursor='hand2', command=win.destroy)
+        btn_close_settings.pack(fill=tk.X, padx=16, pady=(4, 14))
 
     def _on_close(self):
+        if self.settings_win and self.settings_win.winfo_exists():
+            try:
+                self.settings_win.destroy()
+            except Exception:
+                pass
         self.root.destroy()
         os._exit(0)
 
@@ -579,7 +769,7 @@ class Pure2DRadarApp:
             else:
                 self._last_dist = None
                 self.canvas.create_text(cx, cy - 20, text='Searching Hidden Cube...', fill='#64748B', font=('Segoe UI', 8))
-                self.canvas.create_text(cx, cy + 34, text=f'Pos: {player_pos[0]:.0f}, {player_pos[1]:.0f}', fill='#00E676', font=('Segoe UI', 7))
+                self.canvas.create_text(cx, cy + 34, text=f'Pos: {player_pos[0]:.0f}, {player_pos[1]:.0f}', fill=self.player_color, font=('Segoe UI', 7))
         else:
             self._last_dist = None
             self.canvas.create_oval(cx - 5, cy - 5, cx + 5, cy + 5, fill='#1E293B', outline='#475569')
