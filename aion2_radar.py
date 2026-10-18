@@ -144,12 +144,14 @@ class RadarState:
         self.sound_enabled: bool = True
         self.target_char_name: str = ''
         self.last_pos_time: float = 0.0
+        self.last_sim_time: float = 0.0
         self.vel_x: float = 0.0
         self.vel_y: float = 0.0
-        self.extrapolation_enabled: bool = False
+        self.est_player_pos: Optional[Tuple[float, float, float]] = None
+        self.extrapolation_enabled: bool = True
         self.last_c2s_step_time: float = 0.0
         self.last_c2s_move_time: float = 0.0
-        self.base_walk_speed: float = 600.0
+        self.base_walk_speed: float = 650.0
         self.c2s_step_count: int = 0
         self.on_update_callback: Optional[Any] = None
 
@@ -171,48 +173,56 @@ class RadarState:
             if self.player_pos and (not force):
                 dx = x - self.player_pos[0]
                 dy = y - self.player_pos[1]
-                dist_sq = dx * dx + dy * dy
-                if dist_sq > 15000.0 * 15000.0:
-                    self.player_pos = (x, y, z)
-                    self.vel_x = 0.0
-                    self.vel_y = 0.0
-                    self.last_pos_time = now
-                    self.notify_update()
-                    return True
-                if self.last_pos_time > 0:
-                    dt = now - self.last_pos_time
-                    if 0.1 <= dt <= 2.5:
-                        self.vel_x = dx / dt
-                        self.vel_y = dy / dt
-                    else:
-                        self.vel_x = 0.0
-                        self.vel_y = 0.0
-                if dist_sq >= 10.0 * 10.0:
-                    self.player_heading = math.atan2(dx, dy)
-            else:
-                self.vel_x = 0.0
-                self.vel_y = 0.0
+                dist = math.hypot(dx, dy)
+                if dist > 50.0:
+                    heading = math.atan2(dx, dy)
+                    self.player_heading = heading
+                    self.vel_x = math.sin(heading) * self.base_walk_speed
+                    self.vel_y = math.cos(heading) * self.base_walk_speed
             self.player_pos = (x, y, z)
+            self.est_player_pos = (x, y, z)
             self.last_pos_time = now
+            self.last_sim_time = now
         self.notify_update()
         return True
 
     def get_estimated_player_pos(self) -> Optional[Tuple[float, float, float]]:
         if not self.player_pos:
             return None
-        if not self.extrapolation_enabled or self.last_pos_time <= 0:
+        now = time.time()
+        if not self.extrapolation_enabled or self.last_sim_time <= 0:
             return self.player_pos
-        tau = time.time() - self.last_pos_time
-        if 0.0 < tau <= 1.2:
-            speed_sq = self.vel_x * self.vel_x + self.vel_y * self.vel_y
-            if speed_sq > 30.0 * 30.0:
-                pred_x = self.player_pos[0] + self.vel_x * tau
-                pred_y = self.player_pos[1] + self.vel_y * tau
-                return (pred_x, pred_y, self.player_pos[2])
-        elif tau > 1.2:
-            self.vel_x = 0.0
-            self.vel_y = 0.0
-        return self.player_pos
+        dt = now - self.last_sim_time
+        self.last_sim_time = now
+        if dt <= 0:
+            return self.est_player_pos or self.player_pos
+        dt = min(dt, 0.15)
+        is_moving = (now - self.last_c2s_step_time) < 0.35
+        if not is_moving:
+            return self.est_player_pos or self.player_pos
+        vx, vy = self.vel_x, self.vel_y
+        if vx == 0.0 and vy == 0.0 and self.cubes:
+            closest_c = None
+            min_d = float('inf')
+            cur = self.est_player_pos or self.player_pos
+            for c in self.cubes.values():
+                d = math.hypot(c.x - cur[0], c.y - cur[1])
+                if d < min_d:
+                    min_d = d
+                    closest_c = c
+            if closest_c and min_d > 100.0:
+                cdx = closest_c.x - cur[0]
+                cdy = closest_c.y - cur[1]
+                cd = math.hypot(cdx, cdy)
+                vx = (cdx / cd) * self.base_walk_speed
+                vy = (cdy / cd) * self.base_walk_speed
+        if vx != 0.0 or vy != 0.0:
+            cur = self.est_player_pos or self.player_pos
+            nx = cur[0] + vx * dt
+            ny = cur[1] + vy * dt
+            self.est_player_pos = (nx, ny, self.player_pos[2])
+            return self.est_player_pos
+        return self.est_player_pos or self.player_pos
 
     def on_c2s_movement_frame(self, frame_len: int):
         now = time.time()
@@ -245,7 +255,10 @@ class RadarState:
             self.player_id_locked = False
             self.vel_x = 0.0
             self.vel_y = 0.0
+            self.player_heading = None
+            self.est_player_pos = None
             self.last_pos_time = 0.0
+            self.last_sim_time = 0.0
             self.last_dist = None
             self.dist_delta = 0.0
 
@@ -304,7 +317,7 @@ class PureStreamEngine:
     def feed_payload(self, src_ip: str, src_port: int, dst_ip: str, dst_port: int, payload: bytes):
         if not payload:
             return
-        if dst_port in (13328, 13320) and len(payload) in (29, 31, 37, 40, 41, 42):
+        if dst_port in (13328, 13320) and len(payload) not in (11, 12, 16):
             self.state.on_c2s_movement_frame(len(payload))
             return
         self.state.packet_count += 1
@@ -420,7 +433,7 @@ class PureStreamEngine:
                     self.state.set_player_id(eid, lock=False)
                 if self.state.player_entity_id and eid == self.state.player_entity_id:
                     x, y, z = None, None, None
-                    if opcode in (14378, 14379, 14380) and len(p) >= 12:
+                    if opcode in (14378, 14379, 14380, 14340) and len(p) >= 12:
                         x, y, z = struct.unpack('<fff', p[-12:])
                     elif len(p) >= n + 14:
                         x, y, z = struct.unpack('<fff', p[n + 2:n + 14])
