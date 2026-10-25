@@ -94,7 +94,8 @@ def load_radar_settings() -> dict:
         'sound_profile': 'Radar Ping',
         'theme_color': '#A855F7',
         'character_name': '',
-        'radar_scale': 1.0
+        'radar_scale': 1.0,
+        'compass_mode': False
     }
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'radar_settings.json')
     if os.path.exists(path):
@@ -214,6 +215,7 @@ class RadarState:
     def __init__(self):
         self.lock = threading.Lock()
         self.player_pos: Optional[Tuple[float, float, float]] = None
+        self.heading_anchor_pos: Optional[Tuple[float, float]] = None
         self.player_heading: Optional[float] = None
         self.last_dist: Optional[float] = None
         self.dist_delta: float = 0.0
@@ -242,12 +244,19 @@ class RadarState:
             return False
         now = time.time()
         with self.lock:
-            if self.player_pos:
-                dx = x - self.player_pos[0]
-                dy = y - self.player_pos[1]
+            if self.player_pos is not None:
+                if self.heading_anchor_pos is None:
+                    self.heading_anchor_pos = (self.player_pos[0], self.player_pos[1])
+                dx = x - self.heading_anchor_pos[0]
+                dy = y - self.heading_anchor_pos[1]
                 dist = math.hypot(dx, dy)
-                if dist >= 30.0:
+                if dist >= 3000.0:
+                    self.heading_anchor_pos = (x, y)
+                elif dist >= 100.0:
                     self.player_heading = math.atan2(dx, -dy)
+                    self.heading_anchor_pos = (x, y)
+            else:
+                self.heading_anchor_pos = (x, y)
             self.player_pos = (x, y, z)
             self.last_pos_time = now
         self.notify_update()
@@ -276,6 +285,8 @@ class RadarState:
             self.last_pos_time = 0.0
             self.last_dist = None
             self.dist_delta = 0.0
+            self.heading_anchor_pos = None
+            self.player_heading = None
 
     def add_cube(self, cube: CubeItem) -> bool:
         with self.lock:
@@ -563,6 +574,24 @@ class PureStreamEngine:
             offset += frame_total
             self.handle_frame(frame_slice, is_lz4=True, depth=depth)
 
+def get_compass_label(deg: float) -> str:
+    if -22.5 <= deg < 22.5:
+        return 'NORTH (Kuzey)'
+    elif 22.5 <= deg < 67.5:
+        return 'NORTH-EAST (Kuzeydoğu)'
+    elif 67.5 <= deg < 112.5:
+        return 'EAST (Doğu)'
+    elif 112.5 <= deg < 157.5:
+        return 'SOUTH-EAST (Güneydoğu)'
+    elif deg >= 157.5 or deg < -157.5:
+        return 'SOUTH (Güney)'
+    elif -157.5 <= deg < -112.5:
+        return 'SOUTH-WEST (Güneybatı)'
+    elif -112.5 <= deg < -67.5:
+        return 'WEST (Batı)'
+    else:
+        return 'NORTH-WEST (Kuzeybatı)'
+
 def get_direction_label(deg: float) -> Tuple[str, bool]:
     if -22.5 <= deg < 22.5:
         return ('Directly Ahead', True)
@@ -590,6 +619,7 @@ class Modern3DNavRadarApp:
         self.current_alpha = float(settings.get('alpha', 0.92))
         self.scale = float(settings.get('radar_scale', 1.0))
         self.scale = max(0.75, min(1.5, self.scale))
+        self.compass_mode = bool(settings.get('compass_mode', False))
         self.state.sound_enabled = bool(settings.get('sound_enabled', True))
         self.state.sound_volume = float(settings.get('sound_volume', 0.7))
         self.state.sound_profile = str(settings.get('sound_profile', 'Radar Ping'))
@@ -669,6 +699,7 @@ class Modern3DNavRadarApp:
             'sound_profile': self.state.sound_profile,
             'theme_color': '#A855F7',
             'radar_scale': round(self.scale, 2),
+            'compass_mode': getattr(self, 'compass_mode', True),
             'character_name': self.state.target_char_name
         })
 
@@ -688,7 +719,7 @@ class Modern3DNavRadarApp:
             pass
         rx = self.root.winfo_rootx()
         ry = self.root.winfo_rooty()
-        win_w, win_h = 320, 480
+        win_w, win_h = 320, 520
         pos_x = rx - win_w - 10 if rx - win_w - 10 > 20 else rx + int(self.base_width * self.scale) + 10
         pos_y = max(40, ry)
         win.geometry(f'{win_w}x{win_h}+{pos_x}+{pos_y}')
@@ -718,6 +749,25 @@ class Modern3DNavRadarApp:
             self._save_current_settings()
 
         char_var.trace_add('write', on_char_update)
+
+        style = ttk.Style(win)
+        style.theme_use('clam')
+        style.configure('Dark.TCombobox', fieldbackground='#180D2E', background='#251347', foreground='#FFFFFF', arrowcolor=self.theme_color, borderwidth=0)
+
+        nav_frame = tk.Frame(sec_view, bg='#0D0717')
+        nav_frame.pack(fill=tk.X, padx=10, pady=(4, 6))
+        tk.Label(nav_frame, text='Arrow Mode:', font=('Segoe UI', 9), fg='#E2E8F0', bg='#0D0717').pack(side=tk.LEFT)
+        cur_mode_str = 'Compass (North-Up)' if getattr(self, 'compass_mode', False) else 'Movement Relative'
+        nav_mode_var = tk.StringVar(value=cur_mode_str)
+
+        def on_nav_mode_change(event=None):
+            self.compass_mode = (nav_mode_var.get() == 'Compass (North-Up)')
+            self._save_current_settings()
+            self._draw_hud()
+
+        cb_nav_mode = ttk.Combobox(nav_frame, textvariable=nav_mode_var, values=['Compass (North-Up)', 'Movement Relative'], state='readonly', style='Dark.TCombobox', font=('Segoe UI', 8), width=16)
+        cb_nav_mode.pack(side=tk.RIGHT)
+        cb_nav_mode.bind('<<ComboboxSelected>>', on_nav_mode_change)
 
         scale_frame = tk.Frame(sec_view, bg='#0D0717')
         scale_frame.pack(fill=tk.X, padx=10, pady=(4, 0))
@@ -967,15 +1017,25 @@ class Modern3DNavRadarApp:
             sub_text = f'{cube_label} · {age_badge}'
             self.canvas.create_text(w // 2, int(33 * scale), text=sub_text, fill='#F8FAFC', font=('Segoe UI', max(7, int(8 * scale)), 'bold'))
 
-            base_hdg = heading if heading is not None else 0.0
             bearing_to_cube = math.atan2(closest_cdx, -closest_cdy)
-            target_angle = (bearing_to_cube - base_hdg + math.pi) % (2.0 * math.pi) - math.pi
+            if getattr(self, 'compass_mode', False):
+                target_angle = bearing_to_cube
+                deg = math.degrees(target_angle)
+                dir_text = get_compass_label(deg)
+                dir_color = '#C084FC'
+            else:
+                if heading is not None:
+                    target_angle = (bearing_to_cube - heading + math.pi) % (2.0 * math.pi) - math.pi
+                    deg = math.degrees(target_angle)
+                    dir_text, is_ahead = get_direction_label(deg)
+                    dir_color = '#C084FC' if is_ahead else '#F59E0B'
+                else:
+                    target_angle = 0.0
+                    dir_text = 'Run to align'
+                    dir_color = '#94A3B8'
 
             angle_diff = (target_angle - self.cur_visual_angle + math.pi) % (2.0 * math.pi) - math.pi
-            self.cur_visual_angle += angle_diff * 0.28
-
-            deg = math.degrees(target_angle)
-            dir_text, is_ahead = get_direction_label(deg)
+            self.cur_visual_angle = (self.cur_visual_angle + angle_diff * 0.35 + math.pi) % (2.0 * math.pi) - math.pi
 
             if closest_dist < 10.0:
                 dist_str = f'{closest_dist:.1f} m'
@@ -998,6 +1058,14 @@ class Modern3DNavRadarApp:
 
             self.canvas.create_oval(disc_cx - r, disc_cy - r, disc_cx + r, disc_cy + r, outline='#3B0764', width=1.5, fill='#130A24')
             self.canvas.create_oval(disc_cx - r + int(8 * scale), disc_cy - r + int(8 * scale), disc_cx + r - int(8 * scale), disc_cy + r - int(8 * scale), outline='#240742', width=1, dash=(2, 2))
+            cardinal_font = ('Segoe UI', max(6, int(7 * scale)), 'bold')
+            if getattr(self, 'compass_mode', False):
+                self.canvas.create_text(disc_cx, disc_cy - r + int(7 * scale), text='N', fill='#38BDF8', font=cardinal_font)
+                self.canvas.create_text(disc_cx, disc_cy + r - int(7 * scale), text='S', fill='#64748B', font=cardinal_font)
+                self.canvas.create_text(disc_cx + r - int(7 * scale), disc_cy, text='E', fill='#64748B', font=cardinal_font)
+                self.canvas.create_text(disc_cx - r + int(7 * scale), disc_cy, text='W', fill='#64748B', font=cardinal_font)
+            else:
+                self.canvas.create_text(disc_cx, disc_cy - r + int(7 * scale), text='▲', fill=self.theme_color, font=cardinal_font)
 
             self._draw_3d_arrow(disc_cx, disc_cy, self.cur_visual_angle, size=30.0 * scale, dist=closest_dist)
 
@@ -1009,8 +1077,7 @@ class Modern3DNavRadarApp:
                 dist_color = '#FCA5A5'
 
             self.canvas.create_text(w // 2, int(140 * scale), text=dist_str, fill=dist_color, font=('Segoe UI', max(12, int(19 * scale)), 'bold'))
-            dir_color = '#C084FC' if is_ahead else '#F59E0B'
-            self.canvas.create_text(w // 2, int(161 * scale), text=dir_text, fill=dir_color, font=('Segoe UI', max(7, int(9 * scale)), 'bold'))
+            self.canvas.create_text(w // 2, int(161 * scale), text=dir_text, fill=dir_color, font=('Segoe UI', max(7, int(8 * scale)), 'bold'))
 
             bx1, by1, bx2, by2 = int(16 * scale), int(175 * scale), w - int(16 * scale), int(201 * scale)
             self.canvas.create_rectangle(bx1, by1, bx2, by2, outline='#2E1065', fill='#130A21', width=1.5)
@@ -1020,6 +1087,14 @@ class Modern3DNavRadarApp:
 
             self.canvas.create_oval(disc_cx - r, disc_cy - r, disc_cx + r, disc_cy + r, outline='#3B0764', width=1.5, fill='#130A24')
             self.canvas.create_oval(disc_cx - r + int(8 * scale), disc_cy - r + int(8 * scale), disc_cx + r - int(8 * scale), disc_cy + r - int(8 * scale), outline='#240742', width=1, dash=(2, 2))
+            cardinal_font = ('Segoe UI', max(6, int(7 * scale)), 'bold')
+            if getattr(self, 'compass_mode', False):
+                self.canvas.create_text(disc_cx, disc_cy - r + int(7 * scale), text='N', fill='#38BDF8', font=cardinal_font)
+                self.canvas.create_text(disc_cx, disc_cy + r - int(7 * scale), text='S', fill='#64748B', font=cardinal_font)
+                self.canvas.create_text(disc_cx + r - int(7 * scale), disc_cy, text='E', fill='#64748B', font=cardinal_font)
+                self.canvas.create_text(disc_cx - r + int(7 * scale), disc_cy, text='W', fill='#64748B', font=cardinal_font)
+            else:
+                self.canvas.create_text(disc_cx, disc_cy - r + int(7 * scale), text='▲', fill=self.theme_color, font=cardinal_font)
 
             self.scanner_phase = (self.scanner_phase + 0.08) % (2.0 * math.pi)
             sx = disc_cx + math.cos(self.scanner_phase) * (r - 2)
