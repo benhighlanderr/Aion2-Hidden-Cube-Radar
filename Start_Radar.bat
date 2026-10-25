@@ -1,5 +1,5 @@
 @echo off
-title Aion 2 Overlay Radar
+title Aion 2 3D Navigation Radar
 
 net session >nul 2>&1
 if %errorLevel% neq 0 (
@@ -10,11 +10,11 @@ if %errorLevel% neq 0 (
 
 cd /d "%~dp0"
 echo ====================================================
-echo             Starting Aion 2 Radar...
+echo             Starting Aion 2 3D Nav Radar...
 echo ====================================================
 echo.
 
-py aion2_radar.py
+py aion2_nav_radar.py
 if %errorLevel% neq 0 (
     echo.
     echo ====================================================

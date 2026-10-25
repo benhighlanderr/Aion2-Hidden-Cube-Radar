@@ -1,79 +1,92 @@
 ====================================================
-           A2 HCR - HIDDEN CUBE RADAR
+           A2 HCR - 3D NAVIGATION RADAR
 ====================================================
 
-A lightweight, non-intrusive 2D radar overlay for locating Hidden Cubes in Aion 2 in real time.
+A modern, lightweight, non-intrusive 3D HUD Navigation Radar overlay for locating and navigating to Hidden Cubes in Aion 2 in real time.
 Zero memory hooking, zero DLL injection, zero game file modification. 100% passive network packet inspection.
 
 ----------------------------------------------------
-GETTING STARTED & INSTALLATION
+PREREQUISITES & INSTALLATION (READ FIRST)
 ----------------------------------------------------
 
-1. INSTALL PYTHON DEPENDENCIES:
-   Double-click "Install_Requirements.bat".
-   This will install the necessary Python packages: scapy, lz4, psutil.
+1. INSTALL PYTHON (REQUIRED):
+   - Python 3.10, 3.11, 3.12, or 3.13 (Tk 9 supported).
+   - Download from https://www.python.org/downloads/
+   - IMPORTANT: During installation, make sure "Add Python to PATH" is checked!
 
-2. NPCAP DRIVER (REQUIRED FOR PACKET CAPTURE):
-   Network packet sniffing on Windows requires Npcap.
-   If you already have Wireshark or Npcap installed, you are ready.
-   Otherwise, download and install Npcap from:
-   https://npcap.com/#download
-   IMPORTANT: During installation, make sure "Install Npcap in WinPcap API-compatible Mode" is checked.
+2. INSTALL NPCAP (REQUIRED FOR PACKET CAPTURE):
+   - Like popular DPS meters, A2 HCR operates strictly by sniffing network traffic.
+   - Sniffing requires the Npcap packet capture library on Windows.
+   - Download Npcap from: https://npcap.com/#download
+   - IMPORTANT: During Npcap setup, check "Install Npcap in WinPcap API-compatible Mode".
 
-3. LAUNCH THE RADAR:
-   Double-click "Start_Radar.bat" (automatically requests Administrator privileges required for network sniffing).
-   A prompt will appear asking for your in-game Character Name.
-   Enter your character name (or leave it blank for automatic detection) and click "Start Radar".
-   For privacy, character names are never saved to disk.
+3. INSTALL PYTHON DEPENDENCIES:
+   - Double-click "Install_Requirements.bat".
+   - This automatically installs: scapy, lz4, psutil.
 
-----------------------------------------------------
-RADAR DISPLAY & CONTROLS
-----------------------------------------------------
-
-* PLAYER-CENTERED 150M RADAR:
-  Your character is stationary at the exact center of the radar (green circle labeled "YOU").
-  Detected Hidden Cubes appear as red circles at a fixed 150-meter scale (outer circle = 150m, middle dashed ring = 75m).
-  As you move in the world, cubes smoothly glide inward directly toward you at the center with 1:1 motion.
-
-* LIVE DISTANCE & ELEVATION:
-  Real-time 3D distance in meters is displayed directly on the target (e.g., "24m").
-  Height difference is shown in parentheses:
-  "+4m" means the cube is on a cliff, ledge, or roof above you.
-  "-3m" means the cube is below you.
-
-* SEARCHING STATUS & LIVE POSITION:
-  When no cube is currently nearby, the radar displays "Searching for Cubes..." along with your live player coordinates.
-
-* SETTINGS & CUSTOMIZATION MENU:
-  Click the Settings button (gear icon) on the top header to open the settings panel:
-  - Radar Opacity: Adjust overlay transparency from 20% to 100% in real time.
-  - Sound Toggle & Alert Tones: Turn alerts on or off, and choose from 5 audio sound profiles (Radar Ping, Classic Beep, Double Chime, Sci-Fi Pulse, Subtle Click).
-  - Volume Control: Smoothly scale notification alert volume from 0% to 100%, with an instant test button.
-  - Player & Cube Colors: Choose custom color palettes for your character icon and target cubes.
-  Preferences are automatically saved to your local config.
-
-* DISTANCE REFRESH & NETCODE NOTE:
-  Due to Aion 2's server netcode, the server broadcasts verified 3D player coordinates
-  during active movement events rather than basic peace-mode walking.
-  To refresh and update your live distance and bearing to the Hidden Cube while moving,
-  simply perform any of the following quick actions:
-  - Dash (Shift / Dash maneuver)
-  - Jump (Space bar)
-  - Wing Toggle or Gliding
-  - Combat Stance (Tab / Weapon drawn)
-  Performing any of these actions instantly prompts a verified server coordinate broadcast,
-  updating the radar and target distance with 100% mathematical precision.
-
-* DRAGGING & RESIZING:
-  Click and drag anywhere on the header or radar canvas to move the overlay to your desired screen position.
-  Click "X" in the top-right corner to exit the radar.
+4. LAUNCH THE RADAR:
+   - Double-click "Start_Radar.bat" (runs as Administrator for network sniffing).
+   - The radar overlay appears on your screen and begins scanning automatically.
 
 ----------------------------------------------------
-TECHNICAL SPECIFICATIONS
+HOW IT WORKS & MOVEMENT SYNCHRONIZATION
 ----------------------------------------------------
 
-* Monitored Game Ports: TCP 13328 and 13320 (Aion 2 game servers)
-* Packet Decoding: Zero-copy uvarint stream framer with multi-stage LZ4 decompression
-* Cube Filter: Texture-verified database excluding quest containers and decoys
-* Movement Sync: High-precision server packet tracking (0x382A, 0x382B, 0x382C, 0x3804) triggered on Dash, Jump, Wings, and Combat Stance
+* DPS-METER STYLE PASSIVE PACKET INSPECTION:
+  A2 HCR analyzes incoming network packets on TCP ports 13328 / 13320.
+  It does not touch game memory or files, making it completely undetectable and safe.
+
+* SERVER MOVEMENT NETCODE NOTE (VERY IMPORTANT):
+  In Aion 2, server netcode optimizes network traffic by not broadcasting continuous ground walking packets.
+  Instead, true server-verified 3D coordinates (opcode 0x382a) are broadcast during active movement actions:
+  - Opening wings / Gliding
+  - Dashing (Shift / Dash)
+  - Jumping (Space bar)
+  - Casting skills
+
+  THEREFORE: When a Hidden Cube is detected nearby, continuously JUMP, DASH, or TAP WINGS
+  to update your exact distance and directional arrow in real time!
+
+----------------------------------------------------
+3D HUD DISPLAY & DIRECTIONAL ARROW
+----------------------------------------------------
+
+* 3D DIRECTION ARROW & COLOR CODING:
+  When a Hidden Cube is in range (up to 150m), an interactive 3D arrow points directly toward the cube:
+  - RED ARROW: Far distance (> 50 meters away).
+  - YELLOW / ORANGE ARROW: Medium distance (< 50 meters away).
+  - GREEN ARROW: Close proximity (< 15 meters away - you are right next to the cube!).
+
+* LIVE DISTANCE & ELEVATION INDICATOR:
+  - Distance is shown in large bold text (e.g. "32 m").
+  - Vertical box shows elevation relative to your character:
+    * "↑ ABOVE BY 8m" (Cube is on a cliff, rooftop, or tree above you)
+    * "↓ BELOW BY 5m" (Cube is down in a valley, pit, or under a ledge)
+    * "═ LEVEL (SAME HEIGHT)" (Cube is on the same ground level)
+
+* STANDBY SWEEPER:
+  When no cube is currently nearby, the radar displays a smooth rotating radar sweep scanner line while searching.
+
+----------------------------------------------------
+SETTINGS & CUSTOMIZATION (GEAR ICON ⚙)
+----------------------------------------------------
+
+Click the ⚙ icon on the top header to configure:
+1. RADAR SCALE / SIZE:
+   - Scale slider from 75% to 150% to make the overlay smaller or larger according to your screen resolution.
+2. RADAR OPACITY:
+   - Transparency slider from 20% to 100%.
+3. CHARACTER NAME (OPTIONAL):
+   - You can enter your character name to strictly bind your Entity ID in crowded areas.
+   - If left blank, the radar automatically binds to your entity on your first jump/dash (0x382a).
+4. AUDIO ALERTS:
+   - Enable/disable sound notifications when a cube spawns.
+   - 5 audio sound profiles (Radar Ping, Classic Beep, Double Chime, Sci-Fi Pulse, Subtle Click).
+   - Live volume slider and test sound button.
+
+----------------------------------------------------
+CONTROLS:
+- Click and drag anywhere on the overlay to move it across your screen.
+- Click ⚙ to open settings.
+- Click ✕ in the top-right corner to exit.
 ====================================================
