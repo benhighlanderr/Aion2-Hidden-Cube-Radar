@@ -1,8 +1,8 @@
 <p align="center">
-<img width="246" height="293" alt="image" src="https://github.com/user-attachments/assets/ccf0fc2d-1ba0-4ec0-9c90-4c36d43b42d1" />
-<img width="246" height="291" alt="image" src="https://github.com/user-attachments/assets/46d9db95-03f6-4bdf-8d20-5b5e78684f82" />
-<img width="247" height="295" alt="image" src="https://github.com/user-attachments/assets/f28572dd-4cb5-4472-959e-d48c54265a14" />
-<img width="247" height="293" alt="image" src="https://github.com/user-attachments/assets/4175085d-0156-49cf-b8cd-74b00cdb6f78" />
+<img width="200" height="200" alt="image" src="https://github.com/user-attachments/assets/ccf0fc2d-1ba0-4ec0-9c90-4c36d43b42d1" />
+<img width="200" height="200" alt="image" src="https://github.com/user-attachments/assets/46d9db95-03f6-4bdf-8d20-5b5e78684f82" />
+<img width="200" height="200" alt="image" src="https://github.com/user-attachments/assets/f28572dd-4cb5-4472-959e-d48c54265a14" />
+<img width="200" height="200" alt="image" src="https://github.com/user-attachments/assets/4175085d-0156-49cf-b8cd-74b00cdb6f78" />
 </p>
 
 # A2 HCR — Aion 2 Modern 3D Navigation Radar
